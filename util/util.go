@@ -17,12 +17,14 @@ limitations under the License.
 package util
 
 import (
-	"github.com/golang/glog"
+	"context"
+	"net"
+
 	"github.com/miekg/dns"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"net"
+	klog "k8s.io/klog/v2"
 )
 
 // Common allocation units
@@ -99,16 +101,16 @@ func CheckPersistentVolumeClaimModeBlock(pvc *v1.PersistentVolumeClaim) bool {
 }
 
 // FindDNSIP looks up the cluster DNS service by label "coredns", falling back to "kube-dns" if not found
-func FindDNSIP(client kubernetes.Interface) (dnsip string) {
+func FindDNSIP(ctx context.Context, client kubernetes.Interface) (dnsip string) {
 	// find DNS server address through client API
 	// cache result in rbdProvisioner
 	var dnssvc *v1.Service
-	coredns, err := client.CoreV1().Services(metav1.NamespaceSystem).Get("coredns", metav1.GetOptions{})
+	coredns, err := client.CoreV1().Services(metav1.NamespaceSystem).Get(ctx, "coredns", metav1.GetOptions{})
 	if err != nil {
-		glog.Warningf("error getting coredns service: %v. Falling back to kube-dns\n", err)
-		kubedns, err := client.CoreV1().Services(metav1.NamespaceSystem).Get("kube-dns", metav1.GetOptions{})
+		klog.Warningf("error getting coredns service: %v. Falling back to kube-dns\n", err)
+		kubedns, err := client.CoreV1().Services(metav1.NamespaceSystem).Get(ctx, "kube-dns", metav1.GetOptions{})
 		if err != nil {
-			glog.Errorf("error getting kube-dns service: %v\n", err)
+			klog.Errorf("error getting kube-dns service: %v\n", err)
 			return ""
 		}
 		dnssvc = kubedns
@@ -116,7 +118,7 @@ func FindDNSIP(client kubernetes.Interface) (dnsip string) {
 		dnssvc = coredns
 	}
 	if len(dnssvc.Spec.ClusterIP) == 0 {
-		glog.Errorf("DNS service ClusterIP bad\n")
+		klog.Errorf("DNS service ClusterIP bad\n")
 		return ""
 	}
 	return dnssvc.Spec.ClusterIP
@@ -124,16 +126,16 @@ func FindDNSIP(client kubernetes.Interface) (dnsip string) {
 
 // LookupHost looks up IP addresses of hostname on specified DNS server
 func LookupHost(hostname string, serverip string) (iplist []string, err error) {
-	glog.V(4).Infof("lookuphost %q on %q\n", hostname, serverip)
+	klog.V(4).Infof("lookuphost %q on %q\n", hostname, serverip)
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
 	in, err := dns.Exchange(m, JoinHostPort(serverip, "53"))
 	if err != nil {
-		glog.Errorf("dns lookup of %q failed: err %v", hostname, err)
+		klog.Errorf("dns lookup of %q failed: err %v", hostname, err)
 		return nil, err
 	}
 	for _, a := range in.Answer {
-		glog.V(4).Infof("lookuphost answer: %v\n", a)
+		klog.V(4).Infof("lookuphost answer: %v\n", a)
 		if t, ok := a.(*dns.A); ok {
 			iplist = append(iplist, t.A.String())
 		}

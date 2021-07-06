@@ -1,7 +1,7 @@
 package gidreclaimer
 
 import (
-	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/allocator"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/allocator"
 )
 
 // GIDReclaimer provides an interface for implementing objects that know how to find a GID that had previously been

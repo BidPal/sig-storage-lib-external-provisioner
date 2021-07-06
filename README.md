@@ -1,10 +1,13 @@
 # sig-storage-lib-external-provisioner
 
-A library for writing [external provisioners](https://kubernetes.io/docs/concepts/storage/storage-classes/#provisioner). See [external-storage](https://github.com/kubernetes-incubator/external-storage) for community-maintained external provisioners that use this library.
+A library for writing [external provisioners](https://kubernetes.io/docs/concepts/storage/storage-classes/#provisioner). Projects using this library include:
+- https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner - Dynamic sub-dir volume provisioner on a remote NFS server.
+- https://github.com/kubernetes-sigs/nfs-ganesha-server-and-external-provisioner - NFS Ganesha Server and Volume Provisioner.
+- https://github.com/kubernetes-csi/external-provisioner - Sidecar container that watches Kubernetes PersistentVolumeClaim objects and triggers CreateVolume/DeleteVolume against a CSI endpoint
 
 ## Packages
 ### `controller`
-Contains the Provisioner interface and ProvisionController, a custom Kubernetes [controller](https://github.com/kubernetes/community/blob/master/contributors/devel/controllers.md) that watches PersistentVolumes and PersistentVolumeClaims. Implement the Provisioner interface, pass the implementation to a ProvisionController, and Run the controller, which then takes care of calling the Provisioner's Provision or Delete as needed.
+Contains the Provisioner interface and ProvisionController, a custom Kubernetes [controller](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-api-machinery/controllers.md) that watches PersistentVolumes and PersistentVolumeClaims. Implement the Provisioner interface, pass the implementation to a ProvisionController, and Run the controller, which then takes care of calling the Provisioner's Provision or Delete as needed.
 
 ## Optional Packages
 ### `util`

@@ -17,20 +17,21 @@ limitations under the License.
 package gidallocator
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/allocator"
-	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/gidreclaimer"
-	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
-	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/util"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	klog "k8s.io/klog/v2"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/allocator"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/gidreclaimer"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/util"
 )
 
 const (
@@ -71,11 +72,11 @@ func NewWithGIDReclaimer(client kubernetes.Interface, reclaimer gidreclaimer.GID
 	return a
 }
 
-// AllocateNext allocates the next available GID for the given VolumeOptions
+// AllocateNext allocates the next available GID for the given ProvisionOptions
 // (claim's options for a volume it wants) from the appropriate GID table.
-func (a *Allocator) AllocateNext(options controller.VolumeOptions) (int, error) {
+func (a *Allocator) AllocateNext(options controller.ProvisionOptions) (int, error) {
 	class := util.GetPersistentVolumeClaimClass(options.PVC)
-	gidMin, gidMax, err := parseClassParameters(options.Parameters)
+	gidMin, gidMax, err := parseClassParameters(options.StorageClass.Parameters)
 	if err != nil {
 		return 0, err
 	}
@@ -96,7 +97,7 @@ func (a *Allocator) AllocateNext(options controller.VolumeOptions) (int, error) 
 // Release releases the given volume's allocated GID from the appropriate GID
 // table.
 func (a *Allocator) Release(volume *v1.PersistentVolume) error {
-	class, err := a.client.Storage().StorageClasses().Get(util.GetPersistentVolumeClass(volume), metav1.GetOptions{})
+	class, err := a.client.StorageV1().StorageClasses().Get(context.Background(), util.GetPersistentVolumeClass(volume), metav1.GetOptions{})
 	gidMin, gidMax, err := parseClassParameters(class.Parameters)
 	if err != nil {
 		return err
@@ -104,7 +105,7 @@ func (a *Allocator) Release(volume *v1.PersistentVolume) error {
 
 	gid, exists, err := getGid(volume)
 	if err != nil {
-		glog.Error(err)
+		klog.Error(err)
 	} else if exists {
 		gidTable, err := a.getGidTable(class.Name, gidMin, gidMax)
 		if err != nil {
@@ -183,9 +184,9 @@ func (a *Allocator) getGidTable(className string, min int, max int) (*allocator.
 // in a given storage class, and mark them in the table.
 //
 func (a *Allocator) collectGids(className string, gidTable *allocator.MinMaxAllocator) error {
-	pvList, err := a.client.CoreV1().PersistentVolumes().List(metav1.ListOptions{})
+	pvList, err := a.client.CoreV1().PersistentVolumes().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		glog.Errorf("failed to get existing persistent volumes")
+		klog.Errorf("failed to get existing persistent volumes")
 		return err
 	}
 
@@ -199,21 +200,21 @@ func (a *Allocator) collectGids(className string, gidTable *allocator.MinMaxAllo
 		gidStr, ok := pv.Annotations[VolumeGidAnnotationKey]
 
 		if !ok {
-			glog.Warningf("no gid found in pv '%v'", pvName)
+			klog.Warningf("no gid found in pv '%v'", pvName)
 			continue
 		}
 
 		gid, err := convertGid(gidStr)
 		if err != nil {
-			glog.Error(err)
+			klog.Error(err)
 			continue
 		}
 
 		_, err = gidTable.Allocate(gid)
 		if err == allocator.ErrConflict {
-			glog.Warningf("gid %v found in pv %v was already allocated", gid, pvName)
+			klog.Warningf("gid %v found in pv %v was already allocated", gid, pvName)
 		} else if err != nil {
-			glog.Errorf("failed to store gid %v found in pv '%v': %v", gid, pvName, err)
+			klog.Errorf("failed to store gid %v found in pv '%v': %v", gid, pvName, err)
 			return err
 		}
 	}
@@ -221,7 +222,7 @@ func (a *Allocator) collectGids(className string, gidTable *allocator.MinMaxAllo
 	// if a gid reclaimer was given, call it to allow it to contribute additional GIDs to the gidtable
 	if a.gidReclaimer != nil {
 		if err := a.gidReclaimer.Reclaim(className, gidTable); err != nil {
-			glog.Errorf("gid reclaimer failed: %v", err)
+			klog.Errorf("gid reclaimer failed: %v", err)
 			return err
 		}
 	}
